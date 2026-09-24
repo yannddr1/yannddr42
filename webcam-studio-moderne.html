@@ -37,6 +37,17 @@
     .countdown-overlay.show{opacity:1;animation:countdownPop .9s ease-out}
     @keyframes countdownPop{0%{transform:scale(.55);opacity:0}20%{opacity:1}100%{transform:scale(1.05);opacity:0}}
     .side{padding:16px}
+    .gallery{margin-top:18px;padding:16px}
+    .gallery-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .gallery-count{color:var(--muted);font-size:12px}
+    .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+    .gallery-empty{color:var(--muted);font-size:13px;text-align:center;padding:22px;border:1px dashed var(--border);border-radius:12px}
+    .photo-card{position:relative;background:#0a0d11;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .photo-card img{width:100%;aspect-ratio:1;display:block;object-fit:cover}
+    .photo-actions{display:flex;gap:6px;padding:8px}
+    .photo-actions button{flex:1;padding:7px 8px;font-size:12px}
+    .photo-number{position:absolute;top:8px;left:8px;background:rgba(5,7,9,.82);border-radius:999px;padding:4px 7px;font-size:11px}
+    .danger{color:#ffd6db}
     .section-title{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px}
     .effects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;padding-right:4px}
     .effect{padding:10px;border-radius:10px;background:#0f1318;border:1px solid var(--border);text-align:left}
@@ -94,7 +105,20 @@
       </aside>
     </main>
 
-    <footer>Traitement local : aucune image n’est envoyée à un serveur.</footer>
+    <section class="card gallery" aria-labelledby="galleryTitle">
+      <div class="gallery-head">
+        <div>
+          <p id="galleryTitle" class="section-title">Galerie</p>
+          <span id="galleryCount" class="gallery-count">0 photo</span>
+        </div>
+        <button id="clearGalleryBtn" type="button" disabled>Vider la galerie</button>
+      </div>
+      <div id="galleryGrid" class="gallery-grid">
+        <div id="galleryEmpty" class="gallery-empty">Vos photos apparaîtront ici.</div>
+      </div>
+    </section>
+
+    <footer>Traitement local : les photos restent dans cette page et ne sont envoyées à aucun serveur.</footer>
   </div>
 
   <script>
@@ -147,16 +171,65 @@
     const flash = document.getElementById('flash');
     const countdownOverlay = document.getElementById('countdownOverlay');
     const status = document.getElementById('status');
+    const galleryGrid = document.getElementById('galleryGrid');
+    const galleryEmpty = document.getElementById('galleryEmpty');
+    const galleryCount = document.getElementById('galleryCount');
+    const clearGalleryBtn = document.getElementById('clearGalleryBtn');
 
     let stream = null;
     let mirrored = false;
     let currentFilter = '';
     let lastPhoto = null;
     let capturing = false;
+    let gallery = [];
 
     function setStatus(message) {
       status.textContent = message;
     }
+    function updateGallery() {
+      galleryGrid.querySelectorAll('.photo-card').forEach(card => card.remove());
+      galleryEmpty.style.display = gallery.length ? 'none' : 'block';
+      galleryCount.textContent = gallery.length + (gallery.length > 1 ? ' photos' : ' photo');
+      clearGalleryBtn.disabled = gallery.length === 0;
+
+      gallery.forEach((photo, index) => {
+        const card = document.createElement('article');
+        card.className = 'photo-card';
+        card.innerHTML = `
+          <span class="photo-number">#${gallery.length - index}</span>
+          <img src="${photo.data}" alt="Photo ${gallery.length - index}" loading="lazy">
+          <div class="photo-actions">
+            <button type="button" data-action="download">Enregistrer</button>
+            <button type="button" class="danger" data-action="delete" aria-label="Supprimer la photo ${gallery.length - index}">Supprimer</button>
+          </div>
+        `;
+
+        card.querySelector('[data-action="download"]').addEventListener('click', () => {
+          downloadPhoto(photo.data, photo.name);
+        });
+        card.querySelector('[data-action="delete"]').addEventListener('click', () => {
+          gallery.splice(index, 1);
+          updateGallery();
+        });
+        galleryGrid.appendChild(card);
+      });
+    }
+
+    function downloadPhoto(data, filename) {
+      const a = document.createElement('a');
+      a.href = data;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    clearGalleryBtn.addEventListener('click', () => {
+      gallery = [];
+      updateGallery();
+      setStatus('Galerie vidée.');
+    });
+
 
     function stopCamera() {
       if (stream) {
@@ -279,6 +352,9 @@
         ctx.restore();
 
         lastPhoto = canvas.toDataURL('image/jpeg', .92);
+        const filename = 'webcam-photo-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+        gallery.unshift({ data: lastPhoto, name: filename });
+        updateGallery();
         downloadBtn.disabled = false;
         setStatus('Photo prête à enregistrer.');
 
@@ -300,13 +376,11 @@
 
     downloadBtn.addEventListener('click', () => {
       if (!lastPhoto) return;
-      const a = document.createElement('a');
-      a.href = lastPhoto;
-      a.download = 'webcam-photo-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      const photo = gallery[0];
+      downloadPhoto(lastPhoto, photo?.name || 'webcam-photo.jpg');
     });
+
+    updateGallery();
 
     window.addEventListener('beforeunload', stopCamera);
   </script>
