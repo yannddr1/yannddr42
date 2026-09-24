@@ -114,6 +114,7 @@
         </div>
         <div class="gallery-actions">
           <button id="exportGalleryBtn" type="button" disabled>⇩ Exporter la galerie (.ZIP)</button>
+          <button id="downloadAllBtn" type="button" disabled>↓ Tout télécharger (JPG)</button>
           <button id="clearGalleryBtn" type="button" disabled>Vider la galerie</button>
         </div>
       </div>
@@ -180,6 +181,7 @@
     const galleryCount = document.getElementById('galleryCount');
     const clearGalleryBtn = document.getElementById('clearGalleryBtn');
     const exportGalleryBtn = document.getElementById('exportGalleryBtn');
+    const downloadAllBtn = document.getElementById('downloadAllBtn');
 
     let stream = null;
     let mirrored = false;
@@ -224,6 +226,7 @@
       galleryCount.textContent = gallery.length + (gallery.length > 1 ? ' photos' : ' photo');
       clearGalleryBtn.disabled = gallery.length === 0;
       exportGalleryBtn.disabled = gallery.length === 0;
+      downloadAllBtn.disabled = gallery.length === 0;
 
       gallery.forEach((photo, index) => {
         const card = document.createElement('article');
@@ -343,6 +346,24 @@
       return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
     }
 
+    async function downloadAllPhotos() {
+      if (!gallery.length) return;
+
+      downloadAllBtn.disabled = true;
+      setStatus('Téléchargement des JPG…');
+
+      try {
+        for (let i = 0; i < gallery.length; i++) {
+          const photo = gallery[i];
+          downloadPhoto(photo.data, photo.name || 'webcam-photo-' + String(i + 1).padStart(3, '0') + '.jpg');
+          await new Promise(resolve => setTimeout(resolve, 180));
+        }
+        setStatus(gallery.length + ' photo' + (gallery.length > 1 ? 's' : '') + ' téléchargée' + (gallery.length > 1 ? 's' : '') + '.');
+      } finally {
+        downloadAllBtn.disabled = gallery.length === 0;
+      }
+    }
+
     async function exportGallery() {
       if (!gallery.length) return;
 
@@ -373,6 +394,7 @@
     }
 
     exportGalleryBtn.addEventListener('click', exportGallery);
+    downloadAllBtn.addEventListener('click', downloadAllPhotos);
 
     clearGalleryBtn.addEventListener('click', () => {
       gallery = [];
