@@ -181,7 +181,34 @@
     let currentFilter = '';
     let lastPhoto = null;
     let capturing = false;
+    const GALLERY_STORAGE_KEY = 'webcam-studio-gallery-v1';
     let gallery = [];
+
+    function saveGallery() {
+      try {
+        localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(gallery));
+      } catch (error) {
+        setStatus('Galerie trop volumineuse pour le stockage local.');
+      }
+    }
+
+    function loadGallery() {
+      try {
+        const saved = localStorage.getItem(GALLERY_STORAGE_KEY);
+        if (!saved) return;
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          gallery = parsed.filter(photo =>
+            photo &&
+            typeof photo.data === 'string' &&
+            photo.data.startsWith('data:image/') &&
+            typeof photo.name === 'string'
+          );
+        }
+      } catch (error) {
+        gallery = [];
+      }
+    }
 
     function setStatus(message) {
       status.textContent = message;
@@ -209,6 +236,7 @@
         });
         card.querySelector('[data-action="delete"]').addEventListener('click', () => {
           gallery.splice(index, 1);
+          saveGallery();
           updateGallery();
         });
         galleryGrid.appendChild(card);
@@ -226,6 +254,7 @@
 
     clearGalleryBtn.addEventListener('click', () => {
       gallery = [];
+      saveGallery();
       updateGallery();
       setStatus('Galerie vidée.');
     });
@@ -354,6 +383,7 @@
         lastPhoto = canvas.toDataURL('image/jpeg', .92);
         const filename = 'webcam-photo-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
         gallery.unshift({ data: lastPhoto, name: filename });
+        saveGallery();
         updateGallery();
         downloadBtn.disabled = false;
         setStatus('Photo prête à enregistrer.');
@@ -380,6 +410,7 @@
       downloadPhoto(lastPhoto, photo?.name || 'webcam-photo.jpg');
     });
 
+    loadGallery();
     updateGallery();
 
     window.addEventListener('beforeunload', stopCamera);
