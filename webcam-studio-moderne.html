@@ -42,6 +42,7 @@
     .gallery-count{color:var(--muted);font-size:12px}
     .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
     .gallery-empty{color:var(--muted);font-size:13px;text-align:center;padding:22px;border:1px dashed var(--border);border-radius:12px}
+    .gallery-actions{display:flex;gap:8px;flex-wrap:wrap}
     .photo-card{position:relative;background:#0a0d11;border:1px solid var(--border);border-radius:12px;overflow:hidden}
     .photo-card img{width:100%;aspect-ratio:1;display:block;object-fit:cover}
     .photo-actions{display:flex;gap:6px;padding:8px}
@@ -111,7 +112,10 @@
           <p id="galleryTitle" class="section-title">Galerie</p>
           <span id="galleryCount" class="gallery-count">0 photo</span>
         </div>
-        <button id="clearGalleryBtn" type="button" disabled>Vider la galerie</button>
+        <div class="gallery-actions">
+          <button id="exportGalleryBtn" type="button" disabled>⇩ Exporter la galerie (.ZIP)</button>
+          <button id="clearGalleryBtn" type="button" disabled>Vider la galerie</button>
+        </div>
       </div>
       <div id="galleryGrid" class="gallery-grid">
         <div id="galleryEmpty" class="gallery-empty">Vos photos apparaîtront ici.</div>
@@ -175,6 +179,7 @@
     const galleryEmpty = document.getElementById('galleryEmpty');
     const galleryCount = document.getElementById('galleryCount');
     const clearGalleryBtn = document.getElementById('clearGalleryBtn');
+    const exportGalleryBtn = document.getElementById('exportGalleryBtn');
 
     let stream = null;
     let mirrored = false;
@@ -218,6 +223,7 @@
       galleryEmpty.style.display = gallery.length ? 'none' : 'block';
       galleryCount.textContent = gallery.length + (gallery.length > 1 ? ' photos' : ' photo');
       clearGalleryBtn.disabled = gallery.length === 0;
+      exportGalleryBtn.disabled = gallery.length === 0;
 
       gallery.forEach((photo, index) => {
         const card = document.createElement('article');
@@ -251,6 +257,122 @@
       a.click();
       a.remove();
     }
+
+    function dataUrlToBytes(dataUrl) {
+      const base64 = dataUrl.split(',')[1] || '';
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    function crc32(bytes) {
+      let crc = 0xffffffff;
+      for (const byte of bytes) {
+        crc ^= byte;
+        for (let i = 0; i < 8; i++) {
+          crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+        }
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function createZip(files) {
+      const encoder = new TextEncoder();
+      const localParts = [];
+      const centralParts = [];
+      let offset = 0;
+
+      for (const file of files) {
+        const nameBytes = encoder.encode(file.name);
+        const data = file.data;
+        const crc = crc32(data);
+        const local = new Uint8Array(30 + nameBytes.length + data.length);
+        const view = new DataView(local.buffer);
+
+        view.setUint32(0, 0x04034b50, true);
+        view.setUint16(4, 20, true);
+        view.setUint16(6, 0, true);
+        view.setUint16(8, 0, true);
+        view.setUint16(10, 0, true);
+        view.setUint16(12, 0, true);
+        view.setUint32(14, crc, true);
+        view.setUint32(18, data.length, true);
+        view.setUint32(22, data.length, true);
+        view.setUint16(26, nameBytes.length, true);
+        view.setUint16(28, 0, true);
+        local.set(nameBytes, 30);
+        local.set(data, 30 + nameBytes.length);
+        localParts.push(local);
+
+        const central = new Uint8Array(46 + nameBytes.length);
+        const centralView = new DataView(central.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint16(8, 0, true);
+        centralView.setUint16(10, 0, true);
+        centralView.setUint16(12, 0, true);
+        centralView.setUint16(14, 0, true);
+        centralView.setUint32(16, crc, true);
+        centralView.setUint32(20, data.length, true);
+        centralView.setUint32(24, data.length, true);
+        centralView.setUint16(28, nameBytes.length, true);
+        centralView.setUint16(30, 0, true);
+        centralView.setUint16(32, 0, true);
+        centralView.setUint16(34, 0, true);
+        centralView.setUint16(36, 0, true);
+        centralView.setUint32(38, 0, true);
+        centralView.setUint32(42, offset, true);
+        central.set(nameBytes, 46);
+        centralParts.push(central);
+
+        offset += local.length;
+      }
+
+      const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+      const end = new Uint8Array(22);
+      const endView = new DataView(end.buffer);
+      endView.setUint32(0, 0x06054b50, true);
+      endView.setUint16(8, files.length, true);
+      endView.setUint16(10, files.length, true);
+      endView.setUint32(12, centralSize, true);
+      endView.setUint32(16, offset, true);
+      endView.setUint16(20, 0, true);
+
+      return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
+    }
+
+    async function exportGallery() {
+      if (!gallery.length) return;
+
+      try {
+        setStatus('Création du ZIP…');
+        exportGalleryBtn.disabled = true;
+
+        const files = gallery.map((photo, index) => ({
+          name: photo.name || 'webcam-photo-' + String(index + 1).padStart(3, '0') + '.jpg',
+          data: dataUrlToBytes(photo.data)
+        }));
+
+        const blob = createZip(files);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'webcam-galerie-' + new Date().toISOString().slice(0, 10) + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatus(gallery.length + ' photo' + (gallery.length > 1 ? 's' : '') + ' exportée' + (gallery.length > 1 ? 's' : '') + '.');
+      } catch (error) {
+        setStatus('Impossible de créer le ZIP.');
+      } finally {
+        exportGalleryBtn.disabled = gallery.length === 0;
+      }
+    }
+
+    exportGalleryBtn.addEventListener('click', exportGallery);
 
     clearGalleryBtn.addEventListener('click', () => {
       gallery = [];
