@@ -28,9 +28,14 @@
     video{width:100%;height:100%;object-fit:cover;display:block}
     .placeholder{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);text-align:center;padding:30px}
     .placeholder strong{display:block;color:var(--text);font-size:18px;margin-bottom:8px}
-    .camera-controls{display:flex;justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--border)}
+    .camera-controls{display:flex;justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--border);flex-wrap:wrap}
     .shutter{width:64px;height:64px;border-radius:50%;padding:0;border:6px solid #2a313b;background:#f7fafc;box-shadow:0 0 0 2px rgba(255,255,255,.15)}
     .shutter:hover{transform:scale(1.04)}
+    .camera-status{position:absolute;left:12px;right:12px;bottom:12px;display:flex;justify-content:center;pointer-events:none}
+    .status{background:rgba(5,7,9,.82);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:7px 12px;font-size:12px;color:#d9e0e8;backdrop-filter:blur(8px)}
+    .countdown-overlay{position:absolute;inset:0;display:grid;place-items:center;font-size:clamp(72px,15vw,150px);font-weight:800;text-shadow:0 8px 35px rgba(0,0,0,.55);opacity:0;pointer-events:none}
+    .countdown-overlay.show{opacity:1;animation:countdownPop .9s ease-out}
+    @keyframes countdownPop{0%{transform:scale(.55);opacity:0}20%{opacity:1}100%{transform:scale(1.05);opacity:0}}
     .side{padding:16px}
     .section-title{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px}
     .effects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;padding-right:4px}
@@ -66,11 +71,14 @@
               <span>Autorisez l’accès à votre webcam pour commencer.</span>
             </div>
           </div>
+          <div id="countdownOverlay" class="countdown-overlay" aria-live="assertive"></div>
+          <div class="camera-status"><span id="status" class="status">Caméra inactive</span></div>
           <div id="flash" class="flash"></div>
         </div>
         <div class="camera-controls">
           <button id="startBtn" class="primary" type="button">Activer la caméra</button>
           <button id="shotBtn" class="shutter" type="button" aria-label="Prendre une photo" disabled></button>
+          <button id="stopBtn" type="button" disabled>Arrêter</button>
         </div>
       </section>
 
@@ -91,24 +99,45 @@
 
   <script>
     const effects = [
-      ['Normal',''],['Extraterrestre',''],['Baie',''],['Noir & Blanc','grayscale(1)'],
-      ['Sépia','sepia(1)'],['Vintage','sepia(.35) contrast(1.08) saturate(.85)'],
+      ['Normal',''],
+      ['Noir & Blanc','grayscale(1)'],
+      ['Sépia','sepia(1)'],
+      ['Vintage','sepia(.35) contrast(1.08) saturate(.85)'],
       ['Néon','saturate(2) contrast(1.2) hue-rotate(25deg)'],
-      ['Menthe','hue-rotate(75deg) saturate(1.2)'],['Rose','hue-rotate(315deg) saturate(1.4)'],
-      ['Bleu Vrai','hue-rotate(180deg) saturate(1.25)'],['Agrume','hue-rotate(25deg) saturate(1.5)'],
-      ['Flou Artistique','blur(2px) saturate(1.15)'],['Rayon X','invert(1) grayscale(.7)'],
+      ['Menthe','hue-rotate(75deg) saturate(1.2)'],
+      ['Rose','hue-rotate(315deg) saturate(1.4)'],
+      ['Bleu Vrai','hue-rotate(180deg) saturate(1.25)'],
+      ['Agrume','hue-rotate(25deg) saturate(1.5)'],
+      ['Chaud','sepia(.3) saturate(1.45)'],
+      ['Froid','saturate(.85) hue-rotate(175deg)'],
+      ['Rouge','sepia(.15) saturate(2) hue-rotate(320deg)'],
+      ['Vert','saturate(1.35) hue-rotate(70deg)'],
+      ['Violet','saturate(1.5) hue-rotate(285deg)'],
+      ['Jaune','saturate(1.5) hue-rotate(15deg)'],
+      ['Contraste','contrast(1.45)'],
+      ['Fade','contrast(.88) saturate(.75) brightness(1.08)'],
+      ['Lumineux','brightness(1.25)'],
+      ['Sombre','brightness(.72)'],
+      ['Brume','contrast(.85) brightness(1.08) saturate(.75) blur(.35px)'],
+      ['Flou Artistique','blur(2px) saturate(1.15)'],
+      ['Rayon X','invert(1) grayscale(.7)'],
       ['Thermique','invert(1) sepia(1) hue-rotate(180deg) saturate(2)'],
       ['LSD','hue-rotate(140deg) saturate(2) contrast(1.35)'],
-      ['Chaud',''],['Froid',''],['Rouge',''],['Vert',''],['Violet',''],['Jaune',''],
-      ['Contraste',''],['Fade',''],['Lumineux',''],['Sombre',''],['Brume',''],['Pixel',''],
-      ['Cartoon',''],['Dessin',''],['Aquarelle',''],['Crayon',''],['Miroir',''],['Glitch',''],
-      ['Cyber',''],['Noir',''],['Blanc',''],['Or',''],['Cuivre',''],['Argent',''],['Zinc','']
+      ['Cyber','contrast(1.25) saturate(1.8) hue-rotate(190deg)'],
+      ['Cartoon','contrast(1.5) saturate(1.45)'],
+      ['Noir','brightness(.55) contrast(1.3) grayscale(.35)'],
+      ['Blanc','brightness(1.5) contrast(.8) saturate(.5)'],
+      ['Or','sepia(.65) saturate(1.6) hue-rotate(355deg)'],
+      ['Cuivre','sepia(.5) saturate(1.45) hue-rotate(345deg)'],
+      ['Argent','grayscale(.65) contrast(1.1) brightness(1.08)'],
+      ['Zinc','grayscale(.4) contrast(1.25) saturate(.65)']
     ];
 
     const video = document.getElementById('video');
     const placeholder = document.getElementById('placeholder');
     const startBtn = document.getElementById('startBtn');
     const shotBtn = document.getElementById('shotBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const mirrorBtn = document.getElementById('mirrorBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const effectsEl = document.getElementById('effects');
@@ -116,11 +145,32 @@
     const countdown = document.getElementById('countdown');
     const flashToggle = document.getElementById('flashToggle');
     const flash = document.getElementById('flash');
+    const countdownOverlay = document.getElementById('countdownOverlay');
+    const status = document.getElementById('status');
 
     let stream = null;
     let mirrored = false;
     let currentFilter = '';
     let lastPhoto = null;
+    let capturing = false;
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      video.srcObject = null;
+      placeholder.style.display = 'grid';
+      shotBtn.disabled = true;
+      stopBtn.disabled = true;
+      startBtn.disabled = false;
+      startBtn.textContent = 'Activer la caméra';
+      setStatus('Caméra inactive');
+    }
 
     effects.forEach(([name, filter], index) => {
       const btn = document.createElement('button');
@@ -142,72 +192,107 @@
     });
 
     startBtn.addEventListener('click', async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('Webcam non prise en charge par ce navigateur.');
+        return;
+      }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        startBtn.disabled = true;
+        setStatus('Demande d’accès à la caméra…');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
         video.srcObject = stream;
+        await video.play();
         placeholder.style.display = 'none';
         shotBtn.disabled = false;
-        downloadBtn.disabled = true;
+        stopBtn.disabled = false;
+        downloadBtn.disabled = !lastPhoto;
         startBtn.textContent = 'Caméra active';
-        startBtn.disabled = true;
+        setStatus('Caméra active');
       } catch (error) {
-        alert('Impossible d’accéder à la caméra. Vérifiez les permissions du navigateur.');
+        startBtn.disabled = false;
+        const message = error?.name === 'NotAllowedError'
+          ? 'Accès à la caméra refusé.'
+          : error?.name === 'NotFoundError'
+            ? 'Aucune webcam détectée.'
+            : 'Impossible d’accéder à la caméra.';
+        setStatus(message);
       }
     });
+
+    stopBtn.addEventListener('click', stopCamera);
 
     function wait(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     async function takePhoto() {
-      if (!stream) return;
+      if (!stream || capturing) return;
+      capturing = true;
+      shotBtn.disabled = true;
+      setStatus('Préparation de la photo…');
 
-      if (countdown.checked) {
-        for (let i = 3; i > 0; i--) {
-          startBtn.textContent = String(i);
-          await wait(1000);
+      try {
+        if (countdown.checked) {
+          for (let i = 3; i > 0; i--) {
+            countdownOverlay.textContent = String(i);
+            countdownOverlay.classList.remove('show');
+            void countdownOverlay.offsetWidth;
+            countdownOverlay.classList.add('show');
+            setStatus('Photo dans ' + i + '…');
+            await wait(1000);
+          }
         }
-        startBtn.textContent = 'Caméra active';
-      }
 
-      const sourceWidth = video.videoWidth;
-      const sourceHeight = video.videoHeight;
-      if (!sourceWidth || !sourceHeight) return;
+        const sourceWidth = video.videoWidth;
+        const sourceHeight = video.videoHeight;
+        if (!sourceWidth || !sourceHeight) return;
 
-      let width = sourceWidth;
-      let height = sourceHeight;
-      let sx = 0;
-      let sy = 0;
+        let width = sourceWidth;
+        let height = sourceHeight;
+        let sx = 0;
+        let sy = 0;
 
-      if (square.checked) {
-        const size = Math.min(sourceWidth, sourceHeight);
-        sx = (sourceWidth - size) / 2;
-        sy = (sourceHeight - size) / 2;
-        width = size;
-        height = size;
-      }
+        if (square.checked) {
+          const size = Math.min(sourceWidth, sourceHeight);
+          sx = (sourceWidth - size) / 2;
+          sy = (sourceHeight - size) / 2;
+          width = size;
+          height = size;
+        }
 
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas indisponible');
 
-      ctx.save();
-      if (mirrored) {
-        ctx.translate(width, 0);
-        ctx.scale(-1, 1);
-      }
-      ctx.filter = currentFilter || 'none';
-      ctx.drawImage(video, sx, sy, width, height, 0, 0, width, height);
-      ctx.restore();
+        ctx.save();
+        if (mirrored) {
+          ctx.translate(width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.filter = currentFilter || 'none';
+        ctx.drawImage(video, sx, sy, width, height, 0, 0, width, height);
+        ctx.restore();
 
-      lastPhoto = canvas.toDataURL('image/jpeg', .92);
-      downloadBtn.disabled = false;
+        lastPhoto = canvas.toDataURL('image/jpeg', .92);
+        downloadBtn.disabled = false;
+        setStatus('Photo prête à enregistrer.');
 
-      if (flashToggle.checked) {
-        flash.classList.remove('fire');
-        void flash.offsetWidth;
-        flash.classList.add('fire');
+        if (flashToggle.checked) {
+          flash.classList.remove('fire');
+          void flash.offsetWidth;
+          flash.classList.add('fire');
+        }
+      } catch (error) {
+        setStatus('Impossible de prendre la photo.');
+      } finally {
+        capturing = false;
+        shotBtn.disabled = !stream;
+        countdownOverlay.classList.remove('show');
       }
     }
 
@@ -217,9 +302,13 @@
       if (!lastPhoto) return;
       const a = document.createElement('a');
       a.href = lastPhoto;
-      a.download = 'webcam-photo.jpg';
+      a.download = 'webcam-photo-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+      document.body.appendChild(a);
       a.click();
+      a.remove();
     });
+
+    window.addEventListener('beforeunload', stopCamera);
   </script>
 </body>
 </html>
