@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webcam Studio — Photo avec effets</title>
+  <style>
+    :root{
+      --bg:#0b0d10; --panel:#12161b; --muted:#8e98a6; --text:#eef2f6;
+      --accent:#6ee7ff; --accent2:#9b8cff; --danger:#ff6b7a; --border:#202731;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 20% 0%,#18202b 0,#0b0d10 45%);
+      color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:auto;padding:24px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+    h1{font-size:20px;margin:0;font-weight:700}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+    button,select{font:inherit}
+    button{border:1px solid var(--border);background:#171c23;color:var(--text);padding:10px 14px;
+      border-radius:10px;cursor:pointer;transition:.2s}
+    button:hover{border-color:#34404f;transform:translateY(-1px)}
+    button.primary{background:linear-gradient(135deg,#67e8f9,#8b7cf6);color:#071018;border:0;font-weight:700}
+    button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .grid{display:grid;grid-template-columns:1.4fr .8fr;gap:18px}
+    .card{background:rgba(18,22,27,.86);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+    .camera{position:relative;aspect-ratio:16/10;background:#050607;display:grid;place-items:center}
+    video{width:100%;height:100%;object-fit:cover;display:block}
+    .placeholder{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);text-align:center;padding:30px}
+    .placeholder strong{display:block;color:var(--text);font-size:18px;margin-bottom:8px}
+    .camera-controls{display:flex;justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--border)}
+    .shutter{width:64px;height:64px;border-radius:50%;padding:0;border:6px solid #2a313b;background:#f7fafc;box-shadow:0 0 0 2px rgba(255,255,255,.15)}
+    .shutter:hover{transform:scale(1.04)}
+    .side{padding:16px}
+    .section-title{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px}
+    .effects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;padding-right:4px}
+    .effect{padding:10px;border-radius:10px;background:#0f1318;border:1px solid var(--border);text-align:left}
+    .effect.active{border-color:#6ee7ff;box-shadow:0 0 0 1px rgba(110,231,255,.18) inset}
+    .options{display:grid;gap:8px;margin-top:16px}
+    label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#0f1318;color:#cfd6de}
+    input[type="checkbox"]{accent-color:#6ee7ff}
+    footer{color:var(--muted);font-size:12px;text-align:center;margin-top:14px}
+    .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+    .flash.fire{animation:flash .35s ease-out}
+    @keyframes flash{0%{opacity:.95}100%{opacity:0}}
+    @media (max-width:850px){.grid{grid-template-columns:1fr}.effects{max-height:260px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Webcam Studio</h1>
+      <div class="toolbar">
+        <button id="mirrorBtn" type="button">↔ Miroir</button>
+        <button id="downloadBtn" type="button" disabled>↓ Enregistrer</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <div class="camera">
+          <video id="video" autoplay playsinline muted></video>
+          <div id="placeholder" class="placeholder">
+            <div>
+              <strong>Caméra inactive</strong>
+              <span>Autorisez l’accès à votre webcam pour commencer.</span>
+            </div>
+          </div>
+          <div id="flash" class="flash"></div>
+        </div>
+        <div class="camera-controls">
+          <button id="startBtn" class="primary" type="button">Activer la caméra</button>
+          <button id="shotBtn" class="shutter" type="button" aria-label="Prendre une photo" disabled></button>
+        </div>
+      </section>
+
+      <aside class="card side">
+        <p class="section-title">Effets</p>
+        <div id="effects" class="effects"></div>
+
+        <div class="options">
+          <label><span>Photo carrée</span><input id="square" type="checkbox"></label>
+          <label><span>Compte à rebours 3 s</span><input id="countdown" type="checkbox"></label>
+          <label><span>Flash</span><input id="flashToggle" type="checkbox" checked></label>
+        </div>
+      </aside>
+    </main>
+
+    <footer>Traitement local : aucune image n’est envoyée à un serveur.</footer>
+  </div>
+
+  <script>
+    const effects = [
+      ['Normal',''],['Extraterrestre',''],['Baie',''],['Noir & Blanc','grayscale(1)'],
+      ['Sépia','sepia(1)'],['Vintage','sepia(.35) contrast(1.08) saturate(.85)'],
+      ['Néon','saturate(2) contrast(1.2) hue-rotate(25deg)'],
+      ['Menthe','hue-rotate(75deg) saturate(1.2)'],['Rose','hue-rotate(315deg) saturate(1.4)'],
+      ['Bleu Vrai','hue-rotate(180deg) saturate(1.25)'],['Agrume','hue-rotate(25deg) saturate(1.5)'],
+      ['Flou Artistique','blur(2px) saturate(1.15)'],['Rayon X','invert(1) grayscale(.7)'],
+      ['Thermique','invert(1) sepia(1) hue-rotate(180deg) saturate(2)'],
+      ['LSD','hue-rotate(140deg) saturate(2) contrast(1.35)'],
+      ['Chaud',''],['Froid',''],['Rouge',''],['Vert',''],['Violet',''],['Jaune',''],
+      ['Contraste',''],['Fade',''],['Lumineux',''],['Sombre',''],['Brume',''],['Pixel',''],
+      ['Cartoon',''],['Dessin',''],['Aquarelle',''],['Crayon',''],['Miroir',''],['Glitch',''],
+      ['Cyber',''],['Noir',''],['Blanc',''],['Or',''],['Cuivre',''],['Argent',''],['Zinc','']
+    ];
+
+    const video = document.getElementById('video');
+    const placeholder = document.getElementById('placeholder');
+    const startBtn = document.getElementById('startBtn');
+    const shotBtn = document.getElementById('shotBtn');
+    const mirrorBtn = document.getElementById('mirrorBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const effectsEl = document.getElementById('effects');
+    const square = document.getElementById('square');
+    const countdown = document.getElementById('countdown');
+    const flashToggle = document.getElementById('flashToggle');
+    const flash = document.getElementById('flash');
+
+    let stream = null;
+    let mirrored = false;
+    let currentFilter = '';
+    let lastPhoto = null;
+
+    effects.forEach(([name, filter], index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'effect' + (index === 0 ? ' active' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.effect').forEach(el => el.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = filter;
+        video.style.filter = currentFilter;
+      });
+      effectsEl.appendChild(btn);
+    });
+
+    mirrorBtn.addEventListener('click', () => {
+      mirrored = !mirrored;
+      video.style.transform = mirrored ? 'scaleX(-1)' : '';
+    });
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        video.srcObject = stream;
+        placeholder.style.display = 'none';
+        shotBtn.disabled = false;
+        downloadBtn.disabled = true;
+        startBtn.textContent = 'Caméra active';
+        startBtn.disabled = true;
+      } catch (error) {
+        alert('Impossible d’accéder à la caméra. Vérifiez les permissions du navigateur.');
+      }
+    });
+
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function takePhoto() {
+      if (!stream) return;
+
+      if (countdown.checked) {
+        for (let i = 3; i > 0; i--) {
+          startBtn.textContent = String(i);
+          await wait(1000);
+        }
+        startBtn.textContent = 'Caméra active';
+      }
+
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      if (!sourceWidth || !sourceHeight) return;
+
+      let width = sourceWidth;
+      let height = sourceHeight;
+      let sx = 0;
+      let sy = 0;
+
+      if (square.checked) {
+        const size = Math.min(sourceWidth, sourceHeight);
+        sx = (sourceWidth - size) / 2;
+        sy = (sourceHeight - size) / 2;
+        width = size;
+        height = size;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      ctx.save();
+      if (mirrored) {
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.filter = currentFilter || 'none';
+      ctx.drawImage(video, sx, sy, width, height, 0, 0, width, height);
+      ctx.restore();
+
+      lastPhoto = canvas.toDataURL('image/jpeg', .92);
+      downloadBtn.disabled = false;
+
+      if (flashToggle.checked) {
+        flash.classList.remove('fire');
+        void flash.offsetWidth;
+        flash.classList.add('fire');
+      }
+    }
+
+    shotBtn.addEventListener('click', takePhoto);
+
+    downloadBtn.addEventListener('click', () => {
+      if (!lastPhoto) return;
+      const a = document.createElement('a');
+      a.href = lastPhoto;
+      a.download = 'webcam-photo.jpg';
+      a.click();
+    });
+  </script>
+</body>
+</html>
